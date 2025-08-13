@@ -18,13 +18,18 @@ def slugify_url(url: str) -> str:
 
 def fetch_and_save(url: str):
     """Скачивает HTML страницы и сохраняет локально."""
-    filename = slugify_url(url) + ".html"
-    filepath = BASE_DIR / filename
-
     print(f"[FETCH] {url}")
     try:
-        r = httpx.get(url, timeout=15)
+        r = httpx.get(url, timeout=15, follow_redirects=True)
         r.raise_for_status()
+
+        final_url = str(r.url)
+        if final_url != url:
+            print(f"[REDIRECT] {url} -> {final_url}")
+
+        filename = slugify_url(final_url) + ".html"
+        filepath = BASE_DIR / filename
+
         filepath.write_text(r.text, encoding="utf-8")
         print(f"[OK] Saved to {filepath}")
     except Exception as e:
