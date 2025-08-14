@@ -1,5 +1,6 @@
 import os
 import requests
+from typing import List
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -7,24 +8,18 @@ load_dotenv()
 BASE_URL = os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234/v1")
 EMBED_MODEL = os.getenv("EMBED_MODEL")
 
-def get_embedding(text: str):
-    """
-    Получает embedding для текста через LM Studio API.
-    """
+def get_embeddings(texts: List[str]) -> List[List[float]]:
+    """Получает embeddings для батча текстов"""
     url = f"{BASE_URL}/embeddings"
     payload = {
         "model": EMBED_MODEL,
-        "input": text
+        "input": texts
     }
+    
     try:
-        r = requests.post(url, json=payload)
+        r = requests.post(url, json=payload, timeout=60)
         r.raise_for_status()
-        data = r.json()
-        return data["data"][0]["embedding"]
+        return [item["embedding"] for item in r.json()["data"]]
     except Exception as e:
-        print(f"[EMBED ERROR] {e}")
-        return None
-
-if __name__ == "__main__":
-    emb = get_embedding("Привет, мир!")
-    print(len(emb), "dims")
+        print(f"[EMBED ERROR] {str(e)}")
+        return []

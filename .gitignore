@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 .DS_Store
 src/storage/files/
+src/storage/index.faiss
+src/storage/meta.pkl
