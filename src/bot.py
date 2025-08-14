@@ -1,20 +1,29 @@
+from src.embeddings.indexer import search
 import os
-import asyncio
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import Message
-from dotenv import load_dotenv
+import requests
 
-load_dotenv()
+BASE_URL = os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234/v1")
+LLM_MODEL = os.getenv("LMSTUDIO_MODEL")
 
-bot = Bot(token=os.getenv("TELEGRAM_TOKEN"))
-dp = Dispatcher()
+async def ask_lmstudio(question: str, context: str):
+    url = f"{BASE_URL}/chat/completions"
+    payload = {
+        "model": LLM_MODEL,
+        "messages": [
+            {"role": "system", "content": "Ты — ассистент, отвечающий строго по предоставленным данным."},
+            {"role": "user", "content": f"Контекст:\n{context}\n\nВопрос: {question}"}
+        ],
+        "temperature": 0.2
+    }
+    r = requests.post(url, json=payload)
+    r.raise_for_status()
+    data = r.json()
+    return data["choices"][0]["message"]["content"]
 
 @dp.message()
 async def handle_message(message: Message):
-    await message.answer(f"Привет! Ты написал: {message.text}")
-
-async def main():
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    query = message.text
+    chunks = search(query, top_k=int(os.getenv("TOP_K", 4)))
+    context_text = "\n---\n".join([c["text"] for c in chunks])
+    answer = await asyncio.to_thread(ask_lmstudio, query, context_text)
+    await message.answer(answer)
