@@ -2,6 +2,8 @@
 
 Телеграм-бот для ответов на вопросы о решениях компании **EORA**, реализующий RAG (Retrieval-Augmented Generation) с локальной LLM через **LM Studio**. Проект демонстрирует полный пайплайн обработки данных: скачивание → парсинг → чанкинг → индексация → поиск → генерация ответов с явными ссылками на источники.
 
+### [Бот в telegram](https://t.me/testeora_bot)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Ключевые особенности
