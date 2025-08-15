@@ -1,13 +1,14 @@
 import os
 import asyncio
 import aiohttp
-import re
-import pathlib
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import Message, ContentType
+from aiogram.types import Message
 from src.embeddings.indexer import search
+from src.rag.prompt_builder import build_system_prompt
+from src.rag.response_formatter import add_html_links
 
+# Инициализация бота
 bot = Bot(token=os.getenv("TELEGRAM_TOKEN"))
 dp = Dispatcher()
 
@@ -15,8 +16,9 @@ dp = Dispatcher()
 CHAT_URL = os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234/v1")
 LLM_MODEL = os.getenv("LMSTUDIO_MODEL", "TheBloke/Saiga2-7B-GGUF")
 TOP_K = int(os.getenv("TOP_K", 2))
+REQUEST_TIMEOUT = 120
 
-# Уникальные сообщения
+# Сообщения
 WELCOME_MESSAGE = """
 👋 Здравствуйте! Я умный помощник компании EORA — ваш проводник в мире наших разработок и решений.
 
@@ -39,7 +41,7 @@ HELP_MESSAGE = """
 1. Задайте вопрос о решениях EORA
 2. Я поищу информацию в нашей базе знаний
 3. Сформирую ответ на основе найденных материалов
-4. В ответе будут указаны источники в формате [1], [2] - это кликабельные ссылки
+4. В ответе будут указаны источники в формате чисел - это кликабельные ссылки
 
 Примеры вопросов:
 • Какие решения вы предлагаете для e-commerce?
@@ -52,29 +54,16 @@ HELP_MESSAGE = """
 """
 
 async def ask_lmstudio(question: str, context: str, sources: list) -> str:
-    """Асинхронный запрос к LLM с новым форматом ссылок"""
+    """
+    Асинхронный запрос к LLM для генерации ответа
+    Возвращает сгенерированный текст или сообщение об ошибке
+    """
     url = f"{CHAT_URL}/chat/completions"
     
-    # Формируем список источников для промпта
-    sources_list = "\n".join([f"[{i+1}] {url}" for i, url in enumerate(sources)])
+    # Формируем системный промпт
+    system_prompt = build_system_prompt(context, sources)
     
-    # Усиленный промпт для генерации ответа
-    system_prompt = (
-        "Ты — ассистент компании EORA. Отвечай строго по контексту ниже. "
-        "Используй только факты из контекста.\n\n"
-        "### СТРОГИЕ ИНСТРУКЦИИ:\n"
-        "1. Всегда оформляй ссылки на источники ТОЛЬКО в формате: [1], [2], [3] и т.д.\n"
-        "2. НИКОГДА не используй номера без квадратных скобок.\n"
-        "3. НЕ создавай отдельный раздел 'Источники' в конце ответа.\n"
-        "4. НЕ делай слова кликабельными, только номера в квадратных скобках.\n"
-        "5. Пример ПРАВИЛЬНОГО ответа:\n"
-        "   'Для ритейлеров мы предлагаем чат-боты для HR [1] и системы компьютерного зрения [2].'\n"
-        "6. Пример НЕПРАВИЛЬНОГО ответа:\n"
-        "   'Для ритейлеров мы предлагаем чат-боты для HR 1 и системы компьютерного зрения 2.'\n\n"
-        f"### Источники:\n{sources_list}\n\n"
-        f"### Контекст:\n{context[:2000]}"  # Ограничиваем длину контекста
-    )
-    
+    # Формируем запрос
     payload = {
         "model": LLM_MODEL,
         "messages": [
@@ -86,48 +75,25 @@ async def ask_lmstudio(question: str, context: str, sources: list) -> str:
         "stop": ["\n\n"]
     }
     
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=180)) as session:
+    # Выполняем запрос с таймаутом
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)) as session:
         try:
             async with session.post(url, json=payload) as response:
                 response.raise_for_status()
                 data = await response.json()
                 return data["choices"][0]["message"]["content"]
         except asyncio.TimeoutError:
-            return "Генерация ответа заняла слишком много времени."
+            return "⚠️ Генерация ответа заняла слишком много времени."
+        except aiohttp.ClientError as e:
+            print(f"HTTP ошибка: {str(e)}")
+            return "⚠️ Ошибка соединения с сервером генерации."
         except Exception as e:
             print(f"Ошибка запроса: {str(e)}")
-            return "Произошла ошибка при генерации ответа."
-
-def add_html_links(answer: str, sources: list) -> str:
-    """Добавляет HTML-ссылки к номерам [1], [2] в ответе"""
-    # Создаем маппинг номеров на URL
-    source_map = {str(i+1): url for i, url in enumerate(sources)}
-    
-    # Исправляем возможные ошибки форматирования
-    #answer = re.sub(r'(?<!\()\b(\d+)\b(?!\))', r'[\1]', answer)  # Заменяет "1" на "[1]"
-    answer = re.sub(r'\[(\d+)\]\([^)]*\)', r'[\1]', answer)  # Убирает существующие ссылки
-    
-    # Регулярка для поиска [1], [2] и т.д.
-    pattern = r'\[(\d+)\]'
-    
-    def replace_match(match):
-        num = match.group(1)
-        url = source_map.get(num)
-        if url:
-            return f'<a href="{url}">[{num}]</a>'
-        return match.group(0)
-    
-    # Заменяем найденные ссылки
-    linked_answer = re.sub(pattern, replace_match, answer)
-    
-    # Заменяем переносы строк на HTML-теги
-    linked_answer = linked_answer.replace('\n', '<br>')
-    
-    return linked_answer
+            return "⚠️ Произошла ошибка при генерации ответа."
 
 @dp.message(Command("start"))
 async def handle_start(message: Message):
-    """Приветственное сообщение с кнопкой помощи"""
+    """Обработка команды /start - приветственное сообщение"""
     keyboard = types.ReplyKeyboardMarkup(
         keyboard=[
             [types.KeyboardButton(text="Помощь")],
@@ -142,15 +108,17 @@ async def handle_start(message: Message):
 
 @dp.message(Command("help"))
 async def handle_help(message: Message):
-    """Сообщение с инструкциями"""
+    """Обработка команды /help - инструкции по использованию"""
     await message.answer(HELP_MESSAGE, parse_mode=None)
 
 @dp.message(lambda message: message.text == "Помощь")
 async def handle_help_button(message: Message):
+    """Обработка кнопки 'Помощь'"""
     await handle_help(message)
 
 @dp.message(lambda message: message.text == "Примеры вопросов")
 async def handle_examples(message: Message):
+    """Обработка кнопки 'Примеры вопросов'"""
     examples = (
         "Вот примеры вопросов, которые вы можете задать:\n\n"
         "• Что вы можете предложить для банковской сферы?\n"
@@ -163,43 +131,46 @@ async def handle_examples(message: Message):
 
 @dp.message()
 async def handle_message(message: Message):
+    """Обработка пользовательских сообщений"""
     query = message.text.strip()
     if not query:
         await message.answer("Пожалуйста, введите текст вопроса", parse_mode=None)
         return
         
+    # Отправляем сообщение о начале обработки
     processing_msg = await message.answer("🔍 Ищу информацию в базе знаний EORA...", parse_mode=None)
     
     try:
+        # Поиск релевантных чанков
         chunks = await asyncio.to_thread(search, query, TOP_K)
         if not chunks:
             await processing_msg.edit_text("❌ По вашему запросу ничего не найдено", parse_mode=None)
             return
             
+        # Формируем контекст из найденных чанков
         context_text = "\n---\n".join([c["text"] for c in chunks])
         
-        # Извлекаем уникальные конечные URL
+        # Извлекаем уникальные URL источников
         sources = []
         for c in chunks:
             url = c.get("url", "")
             if url and url != "unknown_url" and url not in sources:
                 sources.append(url)
         
+        # Обновляем статус
         await processing_msg.edit_text("🤖 Формирую ответ на основе найденных материалов...", parse_mode=None)
         
         # Генерация ответа
-        try:
-            answer = await asyncio.wait_for(
-                ask_lmstudio(query, context_text, sources), 
-                timeout=60.0
-            )
-        except asyncio.TimeoutError:
-            answer = "⚠️ Генерация ответа заняла слишком много времени."
+        answer = await ask_lmstudio(query, context_text, sources)
         
-        # Добавляем ссылки в HTML-формате
+        # Проверка пустого ответа
+        if not answer.strip():
+            answer = "⚠️ Не удалось сгенерировать ответ. Попробуйте переформулировать вопрос."
+        
+        # Форматируем ответ с HTML-ссылками
         html_answer = add_html_links(answer, sources)
         
-        # Отправка ответа
+        # Отправка финального ответа
         await processing_msg.edit_text(
             html_answer, 
             parse_mode="HTML",
@@ -207,14 +178,17 @@ async def handle_message(message: Message):
         )
     except Exception as e:
         print(f"Ошибка обработки: {str(e)}")
-        await message.answer("⚠️ Произошла ошибка при обработке запроса", parse_mode=None)
+        await message.answer("⚠️ Произошла критическая ошибка при обработке запроса", parse_mode=None)
 
 async def main():
+    """Основная функция запуска бота"""
+    # Установка команд меню
     await bot.set_my_commands([
         types.BotCommand(command="start", description="Начать работу"),
         types.BotCommand(command="help", description="Помощь по использованию")
     ])
     
+    # Запуск бота
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
