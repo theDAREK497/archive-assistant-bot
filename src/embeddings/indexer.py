@@ -12,7 +12,7 @@ META_PATH = Path("src/storage/meta.pkl")
 BATCH_SIZE = 32  # Оптимальный размер батча
 
 def build_index(chunks_dir="src/storage/files/chunks"):
-    print("[INDEX] Building FAISS index with batching...")
+    print("[INDEX] Building FAISS index...")
     vectors = []
     metadata = []
 
@@ -22,32 +22,44 @@ def build_index(chunks_dir="src/storage/files/chunks"):
         print("[INDEX] No chunks found.")
         return
 
-    # Загружаем маппинг URL (создаётся в fetcher.py)
+    # Загружаем маппинг URL
     url_mapping = {}
     mapping_file = Path("src/storage/files/url_mapping.json")
     if mapping_file.exists():
         with open(mapping_file, "r", encoding="utf-8") as f:
-            url_mapping = json.load(f)
+            try:
+                url_mapping = json.load(f)
+            except json.JSONDecodeError:
+                print("Warning: Invalid JSON format in url_mapping.json. Using empty mapping.")
+                url_mapping = {}
 
     # Сбор текстов и метаданных
     texts = []
-    for file_path in tqdm(files, desc="Reading chunks"):
+    for file_path in tqdm(files, desc="Processing chunks"):
         text = file_path.read_text(encoding="utf-8")
         texts.append(text)
         
-        # Извлекаем исходное имя файла из имени чанка
+        # Извлекаем исходное имя файла
         if "_chunk" in file_path.stem:
             original_filename = file_path.stem.rsplit("_chunk", 1)[0] + ".html"
         else:
             original_filename = file_path.stem + ".html"
             
-        # Получаем URL из маппинга
-        url = url_mapping.get(original_filename, "unknown_url")
+        # Получаем URL из маппинга (с поддержкой старого формата)
+        url_entry = url_mapping.get(original_filename)
+        final_url = "unknown_url"
+        
+        if isinstance(url_entry, dict):
+            # Новый формат: {"original_url": "...", "final_url": "..."}
+            final_url = url_entry.get("final_url", "unknown_url")
+        elif isinstance(url_entry, str):
+            # Старый формат: просто URL строка
+            final_url = url_entry
         
         metadata.append({
             "file": file_path.name,
             "text": text,
-            "url": url
+            "url": final_url
         })
 
     if not texts:
@@ -58,7 +70,8 @@ def build_index(chunks_dir="src/storage/files/chunks"):
     for i in tqdm(range(0, len(texts), BATCH_SIZE), desc="Embedding"):
         batch = texts[i:i+BATCH_SIZE]
         batch_embs = get_embeddings(batch)
-        vectors.extend(batch_embs)
+        if batch_embs:
+            vectors.extend(batch_embs)
 
     if not vectors:
         print("[INDEX] No embeddings generated.")
