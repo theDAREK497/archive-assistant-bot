@@ -1,5 +1,6 @@
 import os
 import asyncio
+import re
 import aiohttp
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -16,7 +17,7 @@ dp = Dispatcher()
 CHAT_URL = os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234/v1")
 LLM_MODEL = os.getenv("LMSTUDIO_MODEL", "TheBloke/Saiga2-7B-GGUF")
 TOP_K = int(os.getenv("TOP_K", 2))
-REQUEST_TIMEOUT = 120
+REQUEST_TIMEOUT = 120  # Таймаут запросов в секундах
 
 # Сообщения
 WELCOME_MESSAGE = """
@@ -137,14 +138,36 @@ async def handle_message(message: Message):
         await message.answer("Пожалуйста, введите текст вопроса", parse_mode=None)
         return
         
+    # Общие вопросы, не требующие поиска в базе
+    GENERAL_QUESTIONS = {
+        "привет": "Здравствуйте! Чем могу помочь?",
+        "здравствуй": "Здравствуйте! Задайте вопрос о решениях EORA.",
+        "как дела": "У меня всё отлично, я готов отвечать на ваши вопросы о EORA!",
+        "помощь": HELP_MESSAGE,
+        "что ты умеешь": WELCOME_MESSAGE,
+        "спасибо": "Пожалуйста! Обращайтесь ещё!",
+    }
+    
+    query_lower = query.lower()
+    if query_lower in GENERAL_QUESTIONS:
+        await message.answer(GENERAL_QUESTIONS[query_lower], parse_mode=None)
+        return
+        
     # Отправляем сообщение о начале обработки
     processing_msg = await message.answer("🔍 Ищу информацию в базе знаний EORA...", parse_mode=None)
     
     try:
         # Поиск релевантных чанков
         chunks = await asyncio.to_thread(search, query, TOP_K)
+        
+        # Если ничего не найдено
         if not chunks:
-            await processing_msg.edit_text("❌ По вашему запросу ничего не найдено", parse_mode=None)
+            await processing_msg.edit_text(
+                "❌ В нашей базе знаний нет информации по этому вопросу. "
+                "Попробуйте задать вопрос о решениях EORA.\n\n"
+                "Примеры: /help",
+                parse_mode=None
+            )
             return
             
         # Формируем контекст из найденных чанков
@@ -158,7 +181,7 @@ async def handle_message(message: Message):
                 sources.append(url)
         
         # Обновляем статус
-        await processing_msg.edit_text("🤖 Формирую ответ на основе найденных материалов...", parse_mode=None)
+        await processing_msg.edit_text("🤖 Формирую ответ...", parse_mode=None)
         
         # Генерация ответа
         answer = await ask_lmstudio(query, context_text, sources)
@@ -167,18 +190,32 @@ async def handle_message(message: Message):
         if not answer.strip():
             answer = "⚠️ Не удалось сгенерировать ответ. Попробуйте переформулировать вопрос."
         
-        # Форматируем ответ с HTML-ссылками
+        # Проверка релевантности ответа
+        is_eora_related = any(
+            kw in answer.lower() 
+            for kw in ["eora", "эора", "проект", "решен", "кейс", "технолог"]
+        )
+        
+        # Форматируем ответ
         html_answer = add_html_links(answer, sources)
         
-        # Отправка финального ответа
-        await processing_msg.edit_text(
-            html_answer, 
-            parse_mode="HTML",
-            disable_web_page_preview=True
-        )
+        # Если ответ не о EORA - показываем без ссылок
+        if not is_eora_related:
+            clean_answer = re.sub(r'<a href=[^>]+>\[(\d+)\]</a>', r'[\1]', html_answer)
+            clean_answer = re.sub(r'\[\d+\]', '', clean_answer)
+            await processing_msg.edit_text(
+                clean_answer.replace('<br>', '\n'), 
+                parse_mode=None
+            )
+        else:
+            await processing_msg.edit_text(
+                html_answer, 
+                parse_mode="HTML",
+                disable_web_page_preview=True
+            )
     except Exception as e:
         print(f"Ошибка обработки: {str(e)}")
-        await message.answer("⚠️ Произошла критическая ошибка при обработке запроса", parse_mode=None)
+        await message.answer("⚠️ Произошла ошибка при обработке запроса", parse_mode=None)
 
 async def main():
     """Основная функция запуска бота"""

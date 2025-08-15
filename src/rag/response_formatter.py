@@ -11,22 +11,29 @@ def add_html_links(answer: str, sources: list) -> str:
     Returns:
         Текст ответа с HTML-ссылками
     """
-    # Создаем маппинг номеров на URL
-    source_map = {str(i+1): url for i, url in enumerate(sources)}
+    # Проверяем наличие ссылок в ответе
+    if not re.search(r'\[\d+\]', answer):
+        return answer.replace('\n', '<br>')
     
-    # Убираем существующие markdown-ссылки
-    answer = re.sub(r'\[(\d+)\]\([^)]*\)', r'[\1]', answer)
+    # Собираем все номера ссылок из ответа
+    used_numbers = set(re.findall(r'\[(\d+)\]', answer))
+    max_num = max(map(int, used_numbers)) if used_numbers else 0
     
-    # Регулярка для поиска [1], [2] и т.д.
+    # Проверяем последовательность (1,2,3 без пропусков)
+    if len(used_numbers) > 0 and max_num > len(used_numbers):
+        # Если есть пропуски, удаляем все ссылки из ответа
+        clean_answer = re.sub(r'\[\d+\]', '', answer)
+        return clean_answer.replace('\n', '<br>')
+    
+    # Создаем маппинг только для использованных номеров
+    source_map = {num: sources[int(num)-1] for num in used_numbers 
+                  if int(num) <= len(sources)}
+    
+    # Заменяем ссылки
     pattern = r'\[(\d+)\]'
-    
     def replace_match(match):
-        """Функция замены найденных ссылок"""
         num = match.group(1)
         url = source_map.get(num)
-        if url:
-            return f'<a href="{url}">[{num}]</a>'
-        return match.group(0)
+        return f'<a href="{url}">[{num}]</a>' if url else match.group(0)
     
-    # Заменяем ссылки и форматируем переносы строк
     return re.sub(pattern, replace_match, answer).replace('\n', '<br>')
