@@ -5,15 +5,14 @@ import re
 import pathlib
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, ContentType
 from src.embeddings.indexer import search
 
 bot = Bot(token=os.getenv("TELEGRAM_TOKEN"))
 dp = Dispatcher()
 
 # Настройки
-EMBED_URL = os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234/v1")
-CHAT_URL = os.getenv("LMSTUDIO_CHAT_URL", "http://localhost:1234/v1")
+CHAT_URL = os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234/v1")
 LLM_MODEL = os.getenv("LMSTUDIO_MODEL", "TheBloke/Saiga2-7B-GGUF")
 TOP_K = int(os.getenv("TOP_K", 2))
 
@@ -59,17 +58,19 @@ async def ask_lmstudio(question: str, context: str, sources: list) -> str:
     # Формируем список источников для промпта
     sources_list = "\n".join([f"[{i+1}] {url}" for i, url in enumerate(sources)])
     
-    # Промпт для генерации ответа
+    # Усиленный промпт для генерации ответа
     system_prompt = (
         "Ты — ассистент компании EORA. Отвечай строго по контексту ниже. "
         "Используй только факты из контекста.\n\n"
-        "### Инструкции:\n"
-        "1. Для каждого упоминания проекта ставь номер источника в квадратных скобках: [1], [2] и т.д.\n"
-        "2. НЕ создавай отдельный раздел 'Источники' в конце ответа.\n"
-        "3. НЕ делай слова кликабельными, только номера в квадратных скобках.\n"
-        "4. Ответ давать краткий и содержательный.\n"
-        "5. Пример правильного ответа:\n"
-        "   Для ритейлеров мы предлагаем чат-боты для HR [1] и системы компьютерного зрения [2].\n\n"
+        "### СТРОГИЕ ИНСТРУКЦИИ:\n"
+        "1. Всегда оформляй ссылки на источники ТОЛЬКО в формате: [1], [2], [3] и т.д.\n"
+        "2. НИКОГДА не используй номера без квадратных скобок.\n"
+        "3. НЕ создавай отдельный раздел 'Источники' в конце ответа.\n"
+        "4. НЕ делай слова кликабельными, только номера в квадратных скобках.\n"
+        "5. Пример ПРАВИЛЬНОГО ответа:\n"
+        "   'Для ритейлеров мы предлагаем чат-боты для HR [1] и системы компьютерного зрения [2].'\n"
+        "6. Пример НЕПРАВИЛЬНОГО ответа:\n"
+        "   'Для ритейлеров мы предлагаем чат-боты для HR 1 и системы компьютерного зрения 2.'\n\n"
         f"### Источники:\n{sources_list}\n\n"
         f"### Контекст:\n{context[:2000]}"  # Ограничиваем длину контекста
     )
@@ -97,10 +98,14 @@ async def ask_lmstudio(question: str, context: str, sources: list) -> str:
             print(f"Ошибка запроса: {str(e)}")
             return "Произошла ошибка при генерации ответа."
 
-def add_links_to_answer(answer: str, sources: list) -> str:
-    """Добавляет markdown-ссылки к номерам [1], [2] в ответе"""
+def add_html_links(answer: str, sources: list) -> str:
+    """Добавляет HTML-ссылки к номерам [1], [2] в ответе"""
     # Создаем маппинг номеров на URL
     source_map = {str(i+1): url for i, url in enumerate(sources)}
+    
+    # Исправляем возможные ошибки форматирования
+    #answer = re.sub(r'(?<!\()\b(\d+)\b(?!\))', r'[\1]', answer)  # Заменяет "1" на "[1]"
+    answer = re.sub(r'\[(\d+)\]\([^)]*\)', r'[\1]', answer)  # Убирает существующие ссылки
     
     # Регулярка для поиска [1], [2] и т.д.
     pattern = r'\[(\d+)\]'
@@ -109,10 +114,16 @@ def add_links_to_answer(answer: str, sources: list) -> str:
         num = match.group(1)
         url = source_map.get(num)
         if url:
-            return f"[{num}]({url})"
+            return f'<a href="{url}">[{num}]</a>'
         return match.group(0)
     
-    return re.sub(pattern, replace_match, answer)
+    # Заменяем найденные ссылки
+    linked_answer = re.sub(pattern, replace_match, answer)
+    
+    # Заменяем переносы строк на HTML-теги
+    linked_answer = linked_answer.replace('\n', '<br>')
+    
+    return linked_answer
 
 @dp.message(Command("start"))
 async def handle_start(message: Message):
@@ -126,13 +137,13 @@ async def handle_start(message: Message):
     )
     
     await message.answer(WELCOME_MESSAGE, 
-                         parse_mode="Markdown", 
+                         parse_mode=None,
                          reply_markup=keyboard)
 
 @dp.message(Command("help"))
 async def handle_help(message: Message):
     """Сообщение с инструкциями"""
-    await message.answer(HELP_MESSAGE, parse_mode="Markdown")
+    await message.answer(HELP_MESSAGE, parse_mode=None)
 
 @dp.message(lambda message: message.text == "Помощь")
 async def handle_help_button(message: Message):
@@ -148,21 +159,21 @@ async def handle_examples(message: Message):
         "• Что вы делали для KazanExpress?\n"
         "• Расскажите о проектах в сфере медицины"
     )
-    await message.answer(examples)
+    await message.answer(examples, parse_mode=None)
 
 @dp.message()
 async def handle_message(message: Message):
     query = message.text.strip()
     if not query:
-        await message.answer("Пожалуйста, введите текст вопроса")
+        await message.answer("Пожалуйста, введите текст вопроса", parse_mode=None)
         return
         
-    processing_msg = await message.answer("🔍 Ищу информацию в базе знаний EORA...")
+    processing_msg = await message.answer("🔍 Ищу информацию в базе знаний EORA...", parse_mode=None)
     
     try:
         chunks = await asyncio.to_thread(search, query, TOP_K)
         if not chunks:
-            await processing_msg.edit_text("❌ По вашему запросу ничего не найдено")
+            await processing_msg.edit_text("❌ По вашему запросу ничего не найдено", parse_mode=None)
             return
             
         context_text = "\n---\n".join([c["text"] for c in chunks])
@@ -174,7 +185,7 @@ async def handle_message(message: Message):
             if url and url != "unknown_url" and url not in sources:
                 sources.append(url)
         
-        await processing_msg.edit_text("🤖 Формирую ответ на основе найденных материалов...")
+        await processing_msg.edit_text("🤖 Формирую ответ на основе найденных материалов...", parse_mode=None)
         
         # Генерация ответа
         try:
@@ -185,18 +196,18 @@ async def handle_message(message: Message):
         except asyncio.TimeoutError:
             answer = "⚠️ Генерация ответа заняла слишком много времени."
         
-        # Добавляем ссылки к номерам [1], [2]
-        linked_answer = add_links_to_answer(answer, sources)
+        # Добавляем ссылки в HTML-формате
+        html_answer = add_html_links(answer, sources)
         
         # Отправка ответа
         await processing_msg.edit_text(
-            f"💡 **Ответ на ваш вопрос:**\n\n{linked_answer}", 
-            parse_mode="Markdown",
+            html_answer, 
+            parse_mode="HTML",
             disable_web_page_preview=True
         )
     except Exception as e:
         print(f"Ошибка обработки: {str(e)}")
-        await message.answer("⚠️ Произошла ошибка при обработке запроса")
+        await message.answer("⚠️ Произошла ошибка при обработке запроса", parse_mode=None)
 
 async def main():
     await bot.set_my_commands([
