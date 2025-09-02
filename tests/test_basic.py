@@ -71,6 +71,20 @@ async def test_hallucination_detection():
     
     result = await detect_hallucinations(answer, context)
     assert result == False
+    
+    # Тест на ответ со ссылками (должен пройти)
+    answer = "Мы разработали систему для Lamoda [1] и KazanExpress [2]"
+    context = "Разработка систем для Lamoda и KazanExpress. EORA создала решения для ритейла."
+    
+    result = await detect_hallucinations(answer, context)
+    assert result == False
+    
+    # Тест на общий ответ без ссылок
+    answer = "Мы занимаемся разработкой искусственного интеллекта"
+    context = "EORA разрабатывает системы искусственного интеллекта для различных отраслей"
+    
+    result = await detect_hallucinations(answer, context)
+    assert result == False
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
