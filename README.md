@@ -28,7 +28,7 @@
 
 ```bash
 # Клонирование и настройка
-git clone https://github.com/yourusername/eora-knowledge-assistant.git
+git clone https://github.com/theDAREK497/archive-assistant-bot.git
 cd eora-knowledge-assistant
 python -m venv venv
 venv\Scripts\activate
