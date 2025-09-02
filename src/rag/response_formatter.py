@@ -13,7 +13,7 @@ def add_html_links(answer: str, sources: list) -> str:
     """
     # Проверяем наличие ссылок в ответе
     if not re.search(r'\[\d+\]', answer):
-        return answer.replace('\n', '<br>')
+        return answer
     
     # Собираем все номера ссылок из ответа
     used_numbers = set(re.findall(r'\[(\d+)\]', answer))
@@ -23,7 +23,7 @@ def add_html_links(answer: str, sources: list) -> str:
     if len(used_numbers) > 0 and max_num > len(used_numbers):
         # Если есть пропуски, удаляем все ссылки из ответа
         clean_answer = re.sub(r'\[\d+\]', '', answer)
-        return clean_answer.replace('\n', '<br>')
+        return clean_answer
     
     # Создаем маппинг только для использованных номеров
     source_map = {num: sources[int(num)-1] for num in used_numbers 
@@ -36,4 +36,4 @@ def add_html_links(answer: str, sources: list) -> str:
         url = source_map.get(num)
         return f'<a href="{url}">[{num}]</a>' if url else match.group(0)
     
-    return re.sub(pattern, replace_match, answer).replace('\n', '<br>')
+    return re.sub(pattern, replace_match, answer)

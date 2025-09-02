@@ -130,6 +130,40 @@ async def handle_examples(message: Message):
     )
     await message.answer(examples, parse_mode=None)
 
+async def detect_hallucinations(answer: str, context: str) -> bool:
+    """
+    Обнаружение возможных галлюцинаций LLM.
+    Возвращает True если ответ вероятно содержит галлюцинации.
+    """
+    # Проверяем наличие специфичных фраз, указывающих на неопределенность
+    uncertainty_phrases = [
+        "я не уверен", "возможно", "вероятно", 
+        "не знаю", "не могу сказать", "наверное",
+        "скорее всего", "предположительно"
+    ]
+    
+    answer_lower = answer.lower()
+    
+    # Если ответ содержит фразы неопределенности
+    if any(phrase in answer_lower for phrase in uncertainty_phrases):
+        return True
+        
+    # Проверяем, содержит ли ответ информацию, которой нет в контексте
+    # Более сложная проверка: если ответ содержит много уникальных слов, которых нет в контексте
+    answer_words = set(re.findall(r'\w+', answer_lower))
+    context_words = set(re.findall(r'\w+', context.lower()))
+    
+    # Исключаем общие слова
+    common_words = {"и", "в", "на", "с", "по", "для", "о", "от", "из", "за", "к", "у", "же", "бы", "вы", "а", "но", "да", "нет", "это", "то", "что", "как"}
+    answer_words = answer_words - common_words
+    context_words = context_words - common_words
+    
+    # Если более 40% слов ответа отсутствуют в контексте, возможно это галлюцинация
+    if answer_words and len(answer_words - context_words) / len(answer_words) > 0.4:
+        return True
+        
+    return False
+
 @dp.message()
 async def handle_message(message: Message):
     """Обработка пользовательских сообщений"""
@@ -189,11 +223,23 @@ async def handle_message(message: Message):
         # Проверка пустого ответа
         if not answer.strip():
             answer = "⚠️ Не удалось сгенерировать ответ. Попробуйте переформулировать вопрос."
+
+        # TODO: Детекция галлюцинаций (только для нестандартных ответов)
+        #if not answer.startswith("⚠️"):
+        #    if await detect_hallucinations(answer, context_text):
+        #        answer = (
+        #            "⚠️ Не удалось найти точную информацию в нашей базе знаний. "
+        #            "Попробуйте переформулировать вопрос или уточнить детали.\n\n"
+        #            "Примеры вопросов:\n"
+        #            "• Какие решения вы предлагаете для e-commerce?\n"
+        #            "• Что вы делали для Dodo Pizza?\n"
+        #            "• Какие проекты у вас есть в сфере AI?"
+        #        )
         
         # Проверка релевантности ответа
         is_eora_related = any(
             kw in answer.lower() 
-            for kw in ["eora", "эора", "проект", "решен", "кейс", "технолог"]
+            for kw in ["eora", "эора", "проект", "решен", "кейс", "технолог", "компания", "разработ"]
         )
         
         # Форматируем ответ
@@ -204,7 +250,7 @@ async def handle_message(message: Message):
             clean_answer = re.sub(r'<a href=[^>]+>\[(\d+)\]</a>', r'[\1]', html_answer)
             clean_answer = re.sub(r'\[\d+\]', '', clean_answer)
             await processing_msg.edit_text(
-                clean_answer.replace('<br>', '\n'), 
+                clean_answer, 
                 parse_mode=None
             )
         else:

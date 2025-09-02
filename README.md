@@ -49,10 +49,14 @@ pip install -r requirements.txt
 # 4. Настроить окружение (скопировать и заполнить .env)
 copy .env.example .env
 
-# 5. Запустить обработку данных
+# 5. Запустить обработку данных и проверки качества
 .\run_ingestion.bat
+python health_check.py
 
-# 6. Запустить бота
+# 6. Тестирование и валидация
+./run_tests.bat
+
+# 7. Запустить бота
 python -m src.bot
 ```
 
