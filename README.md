@@ -107,7 +107,7 @@ graph TB
 
 ```bash
 # Запуск тестов
-./run_tests.bat
+.\run_tests.bat
 
 # Проверка системы
 python health_check.py
