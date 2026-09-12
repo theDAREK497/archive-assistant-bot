@@ -1,56 +1,92 @@
-# Knowledge Assistant
+# Archive Assistant Bot
 
-Телеграм-бот с RAG архитектурой для интеллектуальных ответов о решениях компании. Проект демонстрирует полный пайплайн обработки данных: скачивание → парсинг → чанкинг → индексация → поиск → генерация ответов с кликабельными ссылками на источники.
+A Telegram-based RAG prototype for answering questions over a document/web archive with **retrieved source references** and a **locally served language model**.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+The project demonstrates the complete retrieval pipeline:
 
-## 🌟 Особенности
+**fetch → parse → chunk → embed → index → retrieve → generate → cite**
 
-- **Полный RAG пайплайн** с обработкой русскоязычного контента
-- **Локальные LLM** через LM Studio (Qwen/Qwen3)
-- **Кликабельные ссылки** в формате [1], [2] с прямой интеграцией в ответы
-- **Умная фильтрация** запросов и автоматическое определение необходимости ссылок
-- **Асинхронная обработка** с оптимизацией производительности
-- **Детекция галлюцинаций** LLM с минимальным количеством ложных срабатываний
+> **Scope:** portfolio / engineering prototype. It is intended to demonstrate RAG architecture and local-model integration rather than claim production-grade answer accuracy.
 
-## 🛠 Технологический стек
+## What it demonstrates
 
-| Компонент               | Технологии                          |
-|-------------------------|-------------------------------------|
-| **Backend**             | Python 3.10+, aiogram               |
-| **Векторный поиск**     | FAISS                               |
-| **LLM & Embeddings**    | Qwen/Qwen3 через LM Studio          |
-| **Обработка данных**    | httpx, BeautifulSoup (lxml)         |
-| **Управление окружением**| python-dotenv                      |
+- asynchronous Telegram bot workflow with `aiogram`;
+- configurable source ingestion;
+- HTML fetching and parsing;
+- text cleaning and overlapping chunking;
+- local embedding generation;
+- FAISS vector index;
+- retrieval of relevant chunks;
+- prompt construction from retrieved context;
+- locally served LLMs through LM Studio;
+- numbered source references in generated answers;
+- health checks and automated tests.
 
-## 🚀 Быстрый старт
+## Architecture
+
+```mermaid
+flowchart LR
+    Sources[Web / archive sources] --> Fetch[Fetcher]
+    Fetch --> Parse[Parser]
+    Parse --> Chunk[Chunker]
+    Chunk --> Embed[Embeddings]
+    Embed --> Index[(FAISS index)]
+
+    User[Telegram user] --> Bot[Telegram bot]
+    Bot --> Retrieve[Vector retrieval]
+    Index --> Retrieve
+    Retrieve --> Prompt[Context + prompt]
+    Prompt --> LLM[Local LLM / LM Studio]
+    LLM --> Format[Answer + references]
+    Format --> Bot
+```
+
+## Tech stack
+
+| Area | Technology |
+| --- | --- |
+| Bot | Python 3.10+, aiogram |
+| Retrieval | FAISS |
+| LLM / embeddings | OpenAI-compatible local endpoint / LM Studio |
+| Fetching | httpx |
+| Parsing | BeautifulSoup, lxml |
+| Configuration | python-dotenv |
+| Testing | Pytest-based test suite + health check |
+
+## Quick start
 
 ```bash
-# Клонирование и настройка
 git clone https://github.com/theDAREK497/archive-assistant-bot.git
-cd eora-knowledge-assistant
+cd archive-assistant-bot
+
 python -m venv venv
+```
+
+Windows:
+
+```powershell
 venv\Scripts\activate
-
-# Установка зависимостей
 pip install -r requirements.txt
-
-# Настройка окружения
 copy .env.example .env
-# Заполните TELEGRAM_TOKEN и настройте LM Studio
+```
 
-# Обработка данных
+Configure `.env`, start the required models in LM Studio, then build the local index:
+
+```powershell
 .\run_ingestion.bat
+```
 
-# Запуск бота
+Start the bot:
+
+```bash
 python -m src.bot
 ```
 
-## ⚙️ Конфигурация
+## Configuration
+
+Example settings:
 
 ```ini
-# Обязательные параметры
 TELEGRAM_TOKEN=your_telegram_bot_token
 LMSTUDIO_BASE_URL=http://localhost:1234/v1
 LMSTUDIO_MODEL=qwen/qwen3-8b
@@ -58,92 +94,49 @@ EMBED_MODEL=Qwen/Qwen3-Embedding-4B-GGUF
 TOP_K=4
 ```
 
-## 📊 Архитектура решения
+See `.env.example` for the repository's current configuration template.
 
-```mermaid
-graph TB
-    A[Пользовательский запрос] --> B[Telegram Bot]
-    B --> C[Векторный поиск FAISS]
-    C --> D[Извлечение релевантного контекста]
-    D --> E[Генерация ответа LM Studio]
-    E --> F[Форматирование с ссылками]
-    F --> B
-    
-    G[Пайплайн данных] --> H[Загрузка HTML]
-    H --> I[Парсинг и очистка]
-    I --> J[Чанкинг текста]
-    J --> K[Генерация эмбеддингов]
-    K --> L[Построение векторного индекса]
-```
+## Source ingestion
 
-## 🎯 Пример работы
+`sources.txt` defines the source set used by the ingestion pipeline.
 
-**Пользователь**: Что вы умеете?
+The pipeline is split into focused components for fetching, parsing, chunking, embedding and indexing, which makes individual stages easier to test and replace.
 
-**Бот**: Компания специализируется на создании решений для голосовых ассистентов и чат-ботов, включая навыки для проверки лотерейных билетов [1], проверки родинок [2], а также разработку чат-ботов для женщин, таких как Avon Chat Bot [3]. Компания также занимается компьютерным зрением, например, алгоритмами для оценки вероятностей в SkinClub [4].
+## Validation
 
-## 🔧 Ключевые компоненты
+Run the automated checks:
 
-### Обработка данных
-- **`fetcher.py`** - Загрузка веб-страниц с обработкой редиректов
-- **`parser.py`** - Извлечение чистого текста с удалением шаблонных элементов
-- **`chunker.py`** - Разбиение на перекрывающиеся сегменты по 800 символов
-
-### Работа с векторами
-- **`indexer.py`** - Построение и работа с FAISS индексом
-- **`provider.py`** - Генерация эмбеддингов через LM Studio
-
-### Генерация ответов
-- **`prompt_builder.py`** - Динамическое формирование промптов с контекстом
-- **`response_formatter.py`** - Преобразование ответов с кликабельными ссылками
-
-## 📈 Производительность
-
-- **Время ответа**: 15-45 секунд (зависит от сложности запроса)
-- **Точность ответов**: 85-90% на релевантных запросах
-- **Обработка ошибок**: 95% успешных запросов
-
-## 🧪 Тестирование и валидация
-
-```bash
-# Запуск тестов
+```powershell
 .\run_tests.bat
-
-# Проверка системы
 python health_check.py
 ```
 
-Проект включает комплексные тесты для:
-- Парсинга HTML и извлечения текста
-- Разбиения на чанки с перекрытием
-- Форматирования ответов с ссылками
-- Детекции галлюцинаций LLM
+The test suite covers core retrieval-supporting components such as parsing, chunking and response formatting.
 
-## 🚀 Возможности расширения
+### About answer quality
 
-1. **Интеграция с другими LLM** (OpenAI, Anthropic, локальные модели)
-2. **Поддержка мультимодальности** (обработка изображений и PDF)
-3. **Веб-интерфейс** в дополнение к Telegram
-4. **Аналитика и мониторинг** качества ответов
-5. **Кэширование запросов** для улучшения производительности
+This repository does **not** publish an artificial single "accuracy percentage." RAG quality depends on the source set, embedding model, retrieval settings, prompt and generation model.
 
-## 🤝 Contributing
+A more rigorous production evaluation would use a versioned question set and measure retrieval relevance, citation correctness, unsupported-answer behaviour and answer quality separately.
 
-Приветствуются contributions в виде:
-- Исправления ошибок и оптимизации кода
-- Улучшения алгоритмов обработки естественного языка
-- Дополнительных тестов и валидаций
-- Интеграции с новыми моделями и сервисами
+## Repository highlights
 
-## 📄 Лицензия
+- `.env.example` — configuration template
+- `sources.txt` — ingestion source list
+- `src/` — bot and RAG implementation
+- `tests/` — automated tests
+- `run_ingestion.bat` — local ingestion workflow
+- `health_check.py` — environment/system checks
 
-Проект распространяется под лицензией MIT. Подробнее см. в файле [LICENSE](LICENSE).
+## Possible extensions
 
-## 👨‍💻 Автор
+- PDF and office-document ingestion;
+- reranking;
+- hybrid lexical + vector retrieval;
+- evaluation dataset and automated retrieval metrics;
+- web UI in addition to Telegram;
+- alternative OpenAI-compatible providers.
 
-**Гуриков Илья**  
-[GitHub](https://github.com/theDAREK497) | [Telegram](https://t.me/testeora_bot)
+## License
 
----
-
-*Проект разработан в демонстрационных целях для showcase возможностей RAG архитектуры с русскоязычным контентом.*
+MIT. See [LICENSE](LICENSE).
