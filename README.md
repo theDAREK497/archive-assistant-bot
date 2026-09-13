@@ -1,5 +1,7 @@
 # Archive Assistant Bot
 
+![CI](https://github.com/theDAREK497/archive-assistant-bot/actions/workflows/ci.yml/badge.svg)
+
 A Telegram-based RAG prototype for answering questions over a document/web archive with **retrieved source references** and a **locally served language model**.
 
 The project demonstrates the complete retrieval pipeline:

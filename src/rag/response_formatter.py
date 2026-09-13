@@ -1,5 +1,6 @@
 import re
 
+
 def add_html_links(answer: str, sources: list) -> str:
     """
     Преобразует ссылки в формате [1] в HTML-теги для Telegram

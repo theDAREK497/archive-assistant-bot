@@ -5,8 +5,9 @@
 
 import os
 import sys
-import requests
 from pathlib import Path
+
+import requests
 from dotenv import load_dotenv
 
 # Загружаем переменные окружения
@@ -47,7 +48,7 @@ def check_services():
             return False
             
     except Exception as e:
-        print(f"❌ Ошибка подключения к LM Studio: {str(e)}")
+        print(f"❌ Ошибка подключения к LM Studio: {e!s}")
         print("   Убедитесь, что LM Studio запущен и доступен по указанному URL")
         return False
 
@@ -75,7 +76,7 @@ def check_files():
 def check_index():
     """Проверка наличия и валидности векторного индекса."""
     index_path = Path("src/storage/index.faiss")
-    meta_path = Path("src/storage/meta.pkl")
+    meta_path = Path("src/storage/meta.json")
     
     if not index_path.exists() or not meta_path.exists():
         print("⚠️  Векторный индекс отсутствует. Запустите run_ingestion.bat")

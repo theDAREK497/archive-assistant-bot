@@ -1,10 +1,12 @@
-import os
 import asyncio
+import os
 import re
+
 import aiohttp
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message
+
 from src.embeddings.indexer import search
 from src.rag.prompt_builder import build_system_prompt
 from src.rag.response_formatter import add_html_links
@@ -16,7 +18,7 @@ dp = Dispatcher()
 # Настройки
 CHAT_URL = os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234/v1")
 LLM_MODEL = os.getenv("LMSTUDIO_MODEL", "TheBloke/Saiga2-7B-GGUF")
-TOP_K = int(os.getenv("TOP_K", 2))
+TOP_K = int(os.getenv("TOP_K", "2"))
 REQUEST_TIMEOUT = 120  # Таймаут запросов в секундах
 
 # Сообщения
@@ -83,13 +85,13 @@ async def ask_lmstudio(question: str, context: str, sources: list) -> str:
                 response.raise_for_status()
                 data = await response.json()
                 return data["choices"][0]["message"]["content"]
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return "⚠️ Генерация ответа заняла слишком много времени."
         except aiohttp.ClientError as e:
-            print(f"HTTP ошибка: {str(e)}")
+            print(f"HTTP ошибка: {e!s}")
             return "⚠️ Ошибка соединения с сервером генерации."
         except Exception as e:
-            print(f"Ошибка запроса: {str(e)}")
+            print(f"Ошибка запроса: {e!s}")
             return "⚠️ Произошла ошибка при генерации ответа."
 
 @dp.message(Command("start"))
@@ -170,9 +172,7 @@ async def detect_hallucinations(answer: str, context: str) -> bool:
     context_sample = list(context_keywords)[:10]
     
     # Если в ответе есть хотя бы одно ключевое слово из контекста, считаем релевантным
-    for keyword in context_sample:
-        if keyword in answer_lower:
-            return False
+    return all(keyword not in answer_lower for keyword in context_sample)
     
     # Если не нашли ни одного совпадения, возможно это галлюцинация
     return True
@@ -238,8 +238,7 @@ async def handle_message(message: Message):
             answer = "⚠️ Не удалось сгенерировать ответ. Попробуйте переформулировать вопрос."
 
         # Детекция галлюцинаций (только для нестандартных ответов)
-        if not answer.startswith("⚠️"):
-            if await detect_hallucinations(answer, context_text):
+        if not answer.startswith("⚠️") and await detect_hallucinations(answer, context_text):
                 answer = (
                     "⚠️ Не удалось найти точную информацию в нашей базе знаний. "
                     "Попробуйте переформулировать вопрос или уточнить детали.\n\n"
@@ -273,7 +272,7 @@ async def handle_message(message: Message):
                 disable_web_page_preview=True
             )
     except Exception as e:
-        print(f"Ошибка обработки: {str(e)}")
+        print(f"Ошибка обработки: {e!s}")
         await message.answer("⚠️ Произошла ошибка при обработке запроса", parse_mode=None)
 
 async def main():

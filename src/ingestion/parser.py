@@ -1,6 +1,7 @@
 import re
-from bs4 import BeautifulSoup, Comment
 from pathlib import Path
+
+from bs4 import BeautifulSoup, Comment
 
 BASE_DIR = Path(__file__).resolve().parent.parent / "storage" / "files"
 
@@ -88,7 +89,7 @@ def process_all_html():
             print(f"[PARSE] {html_file.name} -> {txt_path.name} ({len(text)} символов)")
             
         except Exception as e:
-            print(f"[ERROR] Ошибка обработки {html_file.name}: {str(e)}")
+            print(f"[ERROR] Ошибка обработки {html_file.name}: {e!s}")
 
 if __name__ == "__main__":
     print("Запуск улучшенного парсера...")

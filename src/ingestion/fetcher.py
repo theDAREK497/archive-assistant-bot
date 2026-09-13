@@ -1,8 +1,9 @@
-import os
-import httpx
 import json
+import os
 from pathlib import Path
 from urllib.parse import urlparse
+
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -56,7 +57,7 @@ def fetch_and_save(url: str):
         url_mapping = {}
         if URL_MAPPING_FILE.exists():
             try:
-                with open(URL_MAPPING_FILE, "r", encoding="utf-8") as f:
+                with open(URL_MAPPING_FILE, encoding="utf-8") as f:
                     url_mapping = json.load(f)
             except json.JSONDecodeError:
                 print("[WARN] Invalid JSON in url_mapping, resetting")
@@ -71,9 +72,9 @@ def fetch_and_save(url: str):
             json.dump(url_mapping, f, ensure_ascii=False, indent=2)
 
     except httpx.HTTPError as e:
-        print(f"[HTTP ERROR] {url} -> {str(e)}")
+        print(f"[HTTP ERROR] {url} -> {e!s}")
     except Exception as e:
-        print(f"[ERROR] {url} -> {str(e)}")
+        print(f"[ERROR] {url} -> {e!s}")
 
 def main():
     """Основная функция обработки URL"""
@@ -81,14 +82,14 @@ def main():
     url_mapping = {}
     if URL_MAPPING_FILE.exists():
         try:
-            with open(URL_MAPPING_FILE, "r", encoding="utf-8") as f:
+            with open(URL_MAPPING_FILE, encoding="utf-8") as f:
                 url_mapping = json.load(f)
         except json.JSONDecodeError:
             print("[ERROR] Corrupted url_mapping.json, resetting")
             url_mapping = {}
     
     # Загрузка URL из файла
-    with open("sources.txt", "r", encoding="utf-8") as f:
+    with open("sources.txt", encoding="utf-8") as f:
         urls = [line.strip() for line in f if line.strip()]
     
     # Фильтрация уже обработанных URL

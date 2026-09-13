@@ -1,10 +1,10 @@
+
 import pytest
-import tempfile
-from pathlib import Path
-from src.ingestion.parser import extract_text_from_html
+
 from src.ingestion.chunker import chunk_text
+from src.ingestion.parser import extract_text_from_html
 from src.rag.response_formatter import add_html_links
-import asyncio
+
 
 def test_html_parsing():
     """Тест парсинга HTML."""
@@ -63,28 +63,28 @@ async def test_hallucination_detection():
     context = "Мы разрабатываем системы искусственного интеллекта"
     
     result = await detect_hallucinations(answer, context)
-    assert result == True
+    assert result
     
     # Тест на релевантный ответ
     answer = "Мы разрабатываем AI системы для e-commerce"
     context = "Мы разрабатываем AI системы для e-commerce. Искусственный интеллект e-commerce ритейл автоматизация"
     
     result = await detect_hallucinations(answer, context)
-    assert result == False
+    assert not result
     
     # Тест на ответ со ссылками (должен пройти)
     answer = "Мы разработали систему для Lamoda [1] и KazanExpress [2]"
     context = "Разработка систем для Lamoda и KazanExpress. EORA создала решения для ритейла."
     
     result = await detect_hallucinations(answer, context)
-    assert result == False
+    assert not result
     
     # Тест на общий ответ без ссылок
     answer = "Мы занимаемся разработкой искусственного интеллекта"
     context = "EORA разрабатывает системы искусственного интеллекта для различных отраслей"
     
     result = await detect_hallucinations(answer, context)
-    assert result == False
+    assert not result
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

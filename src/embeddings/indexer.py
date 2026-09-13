@@ -1,15 +1,15 @@
-import os
-import pickle
-import faiss
-import numpy as np
 import json
 from pathlib import Path
+
+import faiss
+import numpy as np
 from tqdm import tqdm
+
 from src.embeddings.provider import get_embeddings
 
 # Константы путей
 INDEX_PATH = Path("src/storage/index.faiss")
-META_PATH = Path("src/storage/meta.pkl")
+META_PATH = Path("src/storage/meta.json")
 BATCH_SIZE = 32  # Оптимальный размер батча
 
 def build_index(chunks_dir="src/storage/files/chunks"):
@@ -29,10 +29,10 @@ def build_index(chunks_dir="src/storage/files/chunks"):
     mapping_file = Path("src/storage/files/url_mapping.json")
     if mapping_file.exists():
         try:
-            with open(mapping_file, "r", encoding="utf-8") as f:
+            with open(mapping_file, encoding="utf-8") as f:
                 url_mapping = json.load(f)
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            print(f"[ERROR] Invalid mapping file: {str(e)}")
+            print(f"[ERROR] Invalid mapping file: {e!s}")
             url_mapping = {}
 
     # Сбор текстов и метаданных
@@ -63,7 +63,7 @@ def build_index(chunks_dir="src/storage/files/chunks"):
                 "url": final_url
             })
         except Exception as e:
-            print(f"[ERROR] Processing {file_path.name}: {str(e)}")
+            print(f"[ERROR] Processing {file_path.name}: {e!s}")
 
     if not texts:
         print("[INDEX] No texts to process")
@@ -77,7 +77,7 @@ def build_index(chunks_dir="src/storage/files/chunks"):
             if batch_embs:
                 vectors.extend(batch_embs)
         except Exception as e:
-            print(f"[ERROR] Embedding batch {i//BATCH_SIZE}: {str(e)}")
+            print(f"[ERROR] Embedding batch {i//BATCH_SIZE}: {e!s}")
 
     if not vectors:
         print("[INDEX] No embeddings generated.")
@@ -91,8 +91,10 @@ def build_index(chunks_dir="src/storage/files/chunks"):
     INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
     faiss.write_index(index, str(INDEX_PATH))
     
-    with open(META_PATH, "wb") as f:
-        pickle.dump(metadata, f)
+    META_PATH.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
     print(f"[INDEX] Saved index with {len(vectors)} vectors.")
 
@@ -104,17 +106,16 @@ def search(query: str, top_k=4):
 
     try:
         index = faiss.read_index(str(INDEX_PATH))
-        with open(META_PATH, "rb") as f:
-            metadata = pickle.load(f)
+        metadata = json.loads(META_PATH.read_text(encoding="utf-8"))
 
         query_emb = get_embeddings([query])
         if not query_emb:
             return []
 
-        D, I = index.search(np.array(query_emb).astype("float32"), top_k)
-        return [metadata[idx] for idx in I[0]]
+        _, indices = index.search(np.array(query_emb).astype("float32"), top_k)
+        return [metadata[idx] for idx in indices[0]]
     except Exception as e:
-        print(f"[SEARCH ERROR] {str(e)}")
+        print(f"[SEARCH ERROR] {e!s}")
         return []
 
 if __name__ == "__main__":
