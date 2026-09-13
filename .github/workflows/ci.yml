@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Python tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      TELEGRAM_TOKEN: "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi"
+      LMSTUDIO_BASE_URL: "http://127.0.0.1:1234/v1"
+      LMSTUDIO_MODEL: "ci-test-model"
+      EMBED_MODEL: "ci-test-embedding"
+      TOP_K: "2"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile Python sources
+        run: python -m compileall -q src tests health_check.py
+
+      - name: Run tests
+        run: python -m pytest tests/test_basic.py -q
